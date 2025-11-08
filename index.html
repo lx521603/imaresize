@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>移动端图片压缩</title>
+    <script src="https://cdn.jsdelivr.net/npm/compressorjs@1.2.1/dist/compressor.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            padding: 20px; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 100%;
+            background: white;
+            border-radius: 20px;
+            padding: 30px 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+        h1 { 
+            text-align: center; 
+            margin-bottom: 30px; 
+            color: #333;
+            font-size: 28px;
+        }
+        
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 50px 20px;
+            text-align: center;
+            margin: 20px 0;
+            background: #f8f9ff;
+            transition: all 0.3s;
+            touch-action: manipulation;
+        }
+        .upload-area:active {
+            background: #e3e9ff;
+            transform: scale(0.98);
+        }
+        
+        .preview-section {
+            display: none;
+            margin: 30px 0;
+        }
+        .preview-container {
+            display: flex;
+            gap: 15px;
+            overflow-x: auto;
+            padding-bottom: 10px;
+        }
+        .preview-box {
+            min-width: 280px;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 12px;
+        }
+        .preview-img {
+            width: 100%;
+            max-height: 300px;
+            border-radius: 8px;
+            object-fit: contain;
+        }
+        
+        .controls {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 15px;
+            margin: 20px 0;
+        }
+        .control-item {
+            margin: 20px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            background: #ddd;
+            border-radius: 3px;
+            outline: none;
+        }
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 10px;
+            font-size: 16px;
+            background: white;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 16px 32px;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            width: 100%;
+            margin: 10px 0;
+            cursor: pointer;
+            transition: all 0.3s;
+            touch-action: manipulation;
+        }
+        .btn:active {
+            transform: scale(0.95);
+        }
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .stats {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+            border-left: 4px solid #667eea;
+        }
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            padding: 5px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📱 图片压缩</h1>
+        
+        <div class="upload-area" id="uploadArea">
+            <div style="font-size: 48px; margin-bottom: 20px;">📁</div>
+            <h2>点击选择图片</h2>
+            <p style="color: #666; margin-top: 10px;">支持 JPG, PNG, WebP 格式</p>
+            <input type="file" id="fileInput" accept="image/*" class="hidden">
+        </div>
+
+        <div class="preview-section" id="previewSection">
+            <div class="preview-container">
+                <div class="preview-box">
+                    <h3>原图</h3>
+                    <img id="originalPreview" class="preview-img">
+                    <div class="stats" id="originalStats"></div>
+                </div>
+                <div class="preview-box">
+                    <h3>压缩后</h3>
+                    <img id="compressedPreview" class="preview-img">
+                    <div class="stats" id="compressedStats"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls" id="controls">
+            <div class="control-item">
+                <label for="quality">质量: <span id="qualityValue">80</span>%</label>
+                <input type="range" id="quality" min="10" max="100" value="80">
+            </div>
+            
+            <div class="control-item">
+                <label for="width">最大宽度: <span id="widthValue">1920</span>px</label>
+                <input type="range" id="width" min="400" max="3840" value="1920" step="100">
+            </div>
+            
+            <div class="control-item">
+                <label for="format">输出格式</label>
+                <select id="format">
+                    <option value="webp">WebP (推荐)</option>
+                    <option value="jpeg">JPEG</option>
+                    <option value="png">PNG</option>
+                </select>
+            </div>
+
+            <button class="btn" id="compressBtn">开始压缩</button>
+            <button class="btn" id="downloadBtn" disabled>下载图片</button>
+        </div>
+    </div>
+
+    <script>
+        class MobileImageCompressor {
+            constructor() {
+                this.originalFile = null;
+                this.compressedFile = null;
+                this.setupEventListeners();
+            }
+
+            setupEventListeners() {
+                const fileInput = document.getElementById('fileInput');
+                const uploadArea = document.getElementById('uploadArea');
+                const compressBtn = document.getElementById('compressBtn');
+                const downloadBtn = document.getElementById('downloadBtn');
+                const qualitySlider = document.getElementById('quality');
+                const widthSlider = document.getElementById('width');
+
+                // 文件选择
+                uploadArea.addEventListener('click', () => fileInput.click());
+                uploadArea.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    fileInput.click();
+                });
+                
+                fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
+
+                // 控制条
+                qualitySlider.addEventListener('input', (e) => {
+                    document.getElementById('qualityValue').textContent = e.target.value;
+                });
+                
+                widthSlider.addEventListener('input', (e) => {
+                    document.getElementById('widthValue').textContent = e.target.value;
+                });
+
+                // 按钮
+                compressBtn.addEventListener('click', () => this.compressImage());
+                compressBtn.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    this.compressImage();
+                });
+                
+                downloadBtn.addEventListener('click', () => this.downloadImage());
+                downloadBtn.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    this.downloadImage();
+                });
+            }
+
+            handleFileSelect(e) {
+                const file = e.target.files[0];
+                if (!file || !file.type.startsWith('image/')) {
+                    alert('请选择有效的图片文件！');
+                    return;
+                }
+
+                this.originalFile = file;
+                
+                // 显示原图预览
+                const originalPreview = document.getElementById('originalPreview');
+                const originalUrl = URL.createObjectURL(file);
+                originalPreview.src = originalUrl;
+                
+                // 显示原图信息
+                originalPreview.onload = () => {
+                    document.getElementById('originalStats').innerHTML = `
+                        <div class="stat-item">
+                            <span>格式:</span>
+                            <span>${file.type}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span>大小:</span>
+                            <span>${this.formatFileSize(file.size)}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span>分辨率:</span>
+                            <span>${originalPreview.naturalWidth} × ${originalPreview.naturalHeight}</span>
+                        </div>
+                    `;
+                };
+
+                // 显示界面
+                document.getElementById('previewSection').style.display = 'block';
+                document.getElementById('controls').style.display = 'block';
+            }
+
+            async compressImage() {
+                if (!this.originalFile) return;
+
+                const compressBtn = document.getElementById('compressBtn');
+                const compressedPreview = document.getElementById('compressedPreview');
+                
+                compressBtn.disabled = true;
+                compressBtn.textContent = '压缩中...';
+
+                try {
+                    const quality = parseInt(document.getElementById('quality').value) / 100;
+                    const width = parseInt(document.getElementById('width').value);
+                    const format = document.getElementById('format').value;
+
+                    const compressedFile = await new Promise((resolve, reject) => {
+                        new Compressor(this.originalFile, {
+                            quality: quality,
+                            width: width,
+                            height: width * 0.75, // 保持比例
+                            mimeType: `image/${format}`,
+                            success: (result) => resolve(result),
+                            error: (error) => reject(error)
+                        });
+                    });
+
+                    this.compressedFile = compressedFile;
+
+                    // 显示压缩后的预览
+                    const compressedUrl = URL.createObjectURL(compressedFile);
+                    compressedPreview.src = compressedUrl;
+
+                    // 更新统计信息
+                    this.updateStats(compressedFile);
+
+                    // 启用下载按钮
+                    document.getElementById('downloadBtn').disabled = false;
+
+                } catch (error) {
+                    alert('压缩失败: ' + error.message);
+                    console.error(error);
+                } finally {
+                    compressBtn.disabled = false;
+                    compressBtn.textContent = '开始压缩';
+                }
+            }
+
+            updateStats(compressedFile) {
+                const originalSize = this.originalFile.size;
+                const compressedSize = compressedFile.size;
+                const compressionRatio = ((1 - compressedSize / originalSize) * 100).toFixed(1);
+                
+                document.getElementById('compressedStats').innerHTML = `
+                    <div class="stat-item">
+                        <span>格式:</span>
+                        <span>${compressedFile.type}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>大小:</span>
+                        <span>${this.formatFileSize(compressedFile.size)}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>压缩比例:</span>
+                        <span style="color: #4CAF50;">${compressionRatio}%</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>节省空间:</span>
+                        <span>${this.formatFileSize(originalSize - compressedSize)}</span>
+                    </div>
+                `;
+            }
+
+            downloadImage() {
+                if (!this.compressedFile) return;
+
+                const link = document.createElement('a');
+                const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+                const format = this.compressedFile.type.split('/')[1];
+                
+                link.download = `compressed-${timestamp}.${format}`;
+                link.href = URL.createObjectURL(this.compressedFile);
+                link.click();
+                
+                // 清理 URL
+                setTimeout(() => URL.revokeObjectURL(link.href), 100);
+            }
+
+            formatFileSize(bytes) {
+                if (bytes === 0) return '0 B';
+                const k = 1024;
+                const sizes = ['B', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            }
+        }
+
+        // 初始化
+        new MobileImageCompressor();
+    </script>
+</body>
+</html>
